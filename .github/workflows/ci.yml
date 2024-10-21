@@ -59,7 +59,8 @@ jobs:
           PR_CREATOR=$(gh pr view $PR_NUMBER --json author -q .author.login)
 
           # Revert the last commit and push
-          git revert -m 1 ${{ github.sha }}
+          # handle error
+          git revert ${{ github.sha }}
           git push origin main
 
           # Create a new branch for the fix
