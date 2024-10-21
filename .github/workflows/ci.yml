@@ -46,9 +46,6 @@ jobs:
 
           echo "Associated PR number: $PR_NUMBER"
 
-          # Get the original PR author
-          PR_AUTHOR=$(gh pr view $PR_NUMBER --json author -q .author.login)
-
           # Attempt to revert the last commit
           if ! git revert ${{ github.sha }} -m 1; then
             echo "Revert failed due to conflicts. Please resolve manually."
@@ -57,11 +54,7 @@ jobs:
 
           git push origin main
 
-          # Reopen the PR
-          gh pr reopen $PR_NUMBER
-
-          # Comment on the original PR
-          gh pr comment $PR_NUMBER --body "This PR has been automatically reverted due to failing E2E tests.
-          A new PR has been created to address the issues: $NEW_PR_URL"
+          # Reopen the PR with a comment
+          gh pr reopen $PR_NUMBER -c "This PR has been automatically reopened due to failing tests. Please fix the failing tests and update this PR."
         env:
           GH_TOKEN: ${{ github.token }}
