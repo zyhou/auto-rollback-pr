@@ -7,6 +7,12 @@ on:
   push:
     branches: ["main"]
 
+    permissions:
+      actions: "write"
+      contents: "write"
+      id-token: "write"
+      pull-requests: "write"
+
 jobs:
   vitest:
     name: Vitest
