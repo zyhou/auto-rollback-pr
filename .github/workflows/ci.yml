@@ -57,18 +57,8 @@ jobs:
 
           git push origin main
 
-          # Create a new branch for the fix
-          git switch -c fix-pr-$PR_NUMBER
-          git push origin fix-pr-$PR_NUMBER
-
-          # Create a new PR with the original content
-          NEW_PR_URL=$(gh pr create --base main --head fix-pr-$PR_NUMBER \
-            --title "Fix: Revert PR #$PR_NUMBER due to failing tests" \
-            --body "This PR was created to address the issues in the reverted PR #$PR_NUMBER.
-            Please fix the failing tests and update this PR accordingly.
-
-            Original PR: #$PR_NUMBER" \
-            --assignee $PR_AUTHOR)
+          # Reopen the PR
+          gh pr reopen $PR_NUMBER
 
           # Comment on the original PR
           gh pr comment $PR_NUMBER --body "This PR has been automatically reverted due to failing E2E tests.
