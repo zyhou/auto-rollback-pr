@@ -43,7 +43,6 @@ jobs:
           set -x  # Turn on debug mode
 
           # Configure Git
-          COMMIT_NAME=$(git log -1 --pretty=format:'%an')
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -56,16 +55,15 @@ jobs:
 
           echo "Associated PR number: $PR_NUMBER"
 
-          # Attempt to revert the last commit
-          if ! git revert ${{ github.sha }} -m 1; then
-            echo "Revert failed due to conflicts. Please resolve manually."
-            exit 1
-          fi
+          # Get the original PR creator
+          PR_CREATOR=$(gh pr view $PR_NUMBER --json author -q .author.login)
 
+          # Revert the last commit and push
+          git revert -m 1 ${{ github.sha }}
           git push origin main
 
           # Create a new branch for the fix
-          REVERT_BRANCH="fix-pr-${PR_NUMBER}-$(date +%s)"
+          REVERT_BRANCH="fix-${PR_NUMBER}-$(date +%s)"
           git switch -c $REVERT_BRANCH
           git push origin $REVERT_BRANCH
 
@@ -76,10 +74,10 @@ jobs:
             Please fix the failing tests and update this PR accordingly.
 
             Original PR: #$PR_NUMBER" \
-            --assignee "$COMMIT_NAME")
+            --assignee "$PR_CREATOR")
 
           # Comment on the original PR
           gh pr comment $PR_NUMBER --body "This PR has been automatically reverted due to failing E2E tests.
-          A new PR has been created to address the issues: $NEW_PR_URL"
+          A new PR has been created to address the issues: $NEW_PR_URL" # tag @$PR_CREATOR on this comment too?
         env:
           GITHUB_TOKEN: ${{ github.token }}
