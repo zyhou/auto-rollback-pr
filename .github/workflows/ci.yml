@@ -36,9 +36,14 @@ jobs:
       - name: Auto-Revert if tests failed
         if: steps.test-step.outcome == 'failure'
         run: |
+          set -x  # Turn on debug mode
+          set +e  # Don't exit on error
+
           # Configure Git
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name "GitHub Actions"
+          COMMIT_EMAIL=$(git log -1 --pretty=format:'%ae')
+          COMMIT_NAME=$(git log -1 --pretty=format:'%an')
+          git config user.email "$COMMIT_EMAIL"
+          git config user.name "$COMMIT_NAME"
 
           # Get the PR number associated with the last push to main
           PR_NUMBER=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/pulls --jq '.[0].number')
