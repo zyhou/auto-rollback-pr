@@ -42,8 +42,8 @@ jobs:
           # Configure Git
           COMMIT_EMAIL=$(git log -1 --pretty=format:'%ae')
           COMMIT_NAME=$(git log -1 --pretty=format:'%an')
-          git config user.email "$COMMIT_EMAIL"
-          git config user.name "$COMMIT_NAME"
+          git config --global user.email "$COMMIT_EMAIL"
+          git config --global user.name "$COMMIT_NAME"
 
           # Get the PR number associated with the last push to main
           PR_NUMBER=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/pulls --jq '.[0].number')
@@ -74,7 +74,7 @@ jobs:
             Please fix the failing tests and update this PR accordingly.
 
             Original PR: #$PR_NUMBER" \
-            --assignee $PR_AUTHOR)
+            --assignee "$COMMIT_NAME")
 
           # Comment on the original PR
           gh pr comment $PR_NUMBER --body "This PR has been automatically reverted due to failing E2E tests.
