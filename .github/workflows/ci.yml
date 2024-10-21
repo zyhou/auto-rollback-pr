@@ -63,7 +63,13 @@ jobs:
           # Get the original PR creator
           PR_CREATOR=$(gh pr view $PR_NUMBER --json author -q .author.login)
 
+          # Create a new branch for the fix
+          REVERT_BRANCH="auto-revert-${PR_NUMBER}-$(date +%s)"
+          git switch -c $REVERT_BRANCH
+          git push origin $REVERT_BRANCH
+
           # Revert the squashed and merged commit
+          git switch main
           if git revert --no-edit $TRIGGER_COMMIT; then
             echo "Successfully reverted PR #$PR_NUMBER"
             git push origin main
@@ -71,12 +77,6 @@ jobs:
             echo "Failed to revert PR #$PR_NUMBER. Manual intervention may be required."
             exit 1
           fi
-
-          # Create a new branch for the fix
-          REVERT_BRANCH="auto-revert-${PR_NUMBER}-$(date +%s)"
-          git switch -c $REVERT_BRANCH $TRIGGER_COMMIT
-          git push origin $REVERT_BRANCH
-
 
           # Create a new PR
           NEW_PR_URL=$(gh pr create --base main --head $REVERT_BRANCH \
