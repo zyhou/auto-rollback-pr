@@ -18,6 +18,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 ## needed ?
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -48,7 +50,6 @@ jobs:
 
           # Get commit data
           TRIGGER_COMMIT="${{ github.sha }}"
-
           echo "Trigger commit: $TRIGGER_COMMIT"
 
           # Get the PR number associated with the last push to main
@@ -65,11 +66,11 @@ jobs:
 
           # Create a new branch for the fix
           REVERT_BRANCH="auto-revert-${PR_NUMBER}-$(date +%s)"
-          git switch -c $REVERT_BRANCH
+          git checkout -b $REVERT_BRANCH
           git push origin $REVERT_BRANCH
 
           # Revert the squashed and merged commit
-          git switch main
+          git checkout main
           if git revert --no-edit $TRIGGER_COMMIT; then
             echo "Successfully reverted PR #$PR_NUMBER"
             git push origin main
@@ -86,6 +87,8 @@ jobs:
 
             Original PR: #$PR_NUMBER" \
             --assignee "$PR_CREATOR")
+
+          echo "New PR URL: $NEW_PR_URL"
 
           # Comment on the original PR
           gh pr comment $PR_NUMBER --body "This PR has been automatically reverted due to failing E2E tests.
