@@ -44,7 +44,7 @@ jobs:
 
           # Configure Git
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Get the PR number associated with the last push to main
           PR_NUMBER=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/pulls --jq '.[0].number')
@@ -58,10 +58,14 @@ jobs:
           # Get the original PR creator
           PR_CREATOR=$(gh pr view $PR_NUMBER --json author -q .author.login)
 
-          # Revert the last commit and push
-          # handle error
-          git revert ${{ github.sha }}
-          git push origin main
+          # Revert the squashed and merged commit
+          if git revert --no-edit ${{ github.sha }}; then
+            echo "Successfully reverted PR #$PR_NUMBER"
+            git push origin main
+          else
+            echo "Failed to revert PR #$PR_NUMBER. Manual intervention may be required."
+            exit 1
+          fi
 
           # Create a new branch for the fix
           REVERT_BRANCH="fix-${PR_NUMBER}-$(date +%s)"
