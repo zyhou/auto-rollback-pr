@@ -1,12 +1,10 @@
 # This workflow will do a clean installation of node dependencies, cache/restore them, build the source code and run tests across different versions of node
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-nodejs
 
-name: CI
+name: Tests and Auto-Revert
 
 on:
   push:
-    branches: ["main"]
-  pull_request:
     branches: ["main"]
 
 jobs:
@@ -20,12 +18,58 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 9
+
       - name: Use Node.js latest
         uses: actions/setup-node@v4
         with:
           node-version: "latest"
           cache: "pnpm"
+
       - name: Install dependencies
         run: pnpm install
+
       - name: Run vitest
         run: pnpm test
+        continue-on-error: true
+        id: test-step
+
+      - name: Auto-Revert if tests failed
+        if: steps.test-step.outcome == 'failure'
+        run: |
+          # Get the PR number associated with the last push to main
+          PR_NUMBER=$(gh api repos/${{ github.repository }}/commits/${{ github.sha }}/pulls --jq '.[0].number')
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Could not find associated PR number. Exiting."
+            exit 1
+          fi
+
+          echo "Associated PR number: $PR_NUMBER"
+
+          # Get the original PR author
+          PR_AUTHOR=$(gh pr view $PR_NUMBER --json author -q .author.login)
+
+          # Attempt to revert the last commit
+          if ! git revert ${{ github.sha }} -m 1; then
+            echo "Revert failed due to conflicts. Please resolve manually."
+            exit 1
+          fi
+
+          git push origin main
+
+          # Create a new branch for the fix
+          git switch -c fix-pr-$PR_NUMBER
+          git push origin fix-pr-$PR_NUMBER
+
+          # Create a new PR with the original content
+          NEW_PR_URL=$(gh pr create --base main --head fix-pr-$PR_NUMBER \
+            --title "Fix: Revert PR #$PR_NUMBER due to failing tests" \
+            --body "This PR was created to address the issues in the reverted PR #$PR_NUMBER.
+            Please fix the failing tests and update this PR accordingly.
+
+            Original PR: #$PR_NUMBER" \
+            --assignee $PR_AUTHOR)
+
+          # Comment on the original PR
+          gh pr comment $PR_NUMBER --body "This PR has been automatically reverted due to failing E2E tests.
+          A new PR has been created to address the issues: $NEW_PR_URL"
