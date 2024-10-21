@@ -1,2 +1,2 @@
-e:test
+s:xe:test
 esw
