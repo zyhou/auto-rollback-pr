@@ -73,3 +73,5 @@ jobs:
           # Comment on the original PR
           gh pr comment $PR_NUMBER --body "This PR has been automatically reverted due to failing E2E tests.
           A new PR has been created to address the issues: $NEW_PR_URL"
+        env:
+          GH_TOKEN: ${{ github.token }}
