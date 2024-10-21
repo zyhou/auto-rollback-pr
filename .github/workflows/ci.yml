@@ -34,11 +34,9 @@ jobs:
         id: test-step
 
       - name: Auto-Revert if tests failed
-        uses: actions/checkout@v4
         if: steps.test-step.outcome == 'failure'
         run: |
           set -x  # Turn on debug mode
-          set +e  # Don't exit on error
 
           # Configure Git
           COMMIT_NAME=$(git log -1 --pretty=format:'%an')
