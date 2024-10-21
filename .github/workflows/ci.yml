@@ -68,6 +68,7 @@ jobs:
           git switch -c $REVERT_BRANCH
           git push origin $REVERT_BRANCH
 
+
           # Revert the squashed and merged commit
           git switch main
           if git revert --no-edit $TRIGGER_COMMIT; then
