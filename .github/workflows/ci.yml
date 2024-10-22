@@ -7,6 +7,9 @@ on:
   push:
     branches: ["main"]
 
+env:
+  ENABLE_AUTO_REVERT: "true"
+
 permissions:
   contents: "write"
   pull-requests: "write"
@@ -40,7 +43,7 @@ jobs:
         id: test-step
 
       - name: Auto-Revert if tests failed
-        if: steps.test-step.outcome == 'failure'
+        if: steps.test-step.outcome == 'failure' && env.ENABLE_AUTO_REVERT == 'true'
         run: |
           set -x  # Turn on debug mode
 
@@ -67,7 +70,6 @@ jobs:
             echo "Invalid PR number or creator for commit $TRIGGER_COMMIT. Exiting."
             exit 1
           fi
-
 
           # Step 1: Revert on main branch
           if git revert --no-edit $TRIGGER_COMMIT; then
