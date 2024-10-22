@@ -72,6 +72,7 @@ jobs:
           fi
 
           # Step 1: Revert on main branch
+          git checkout main
           if git revert --no-edit $TRIGGER_COMMIT; then
             echo "Successfully reverted PR #$PR_NUMBER"
             git push origin main
