@@ -10,6 +10,7 @@ on:
 permissions:
   contents: "write"
   pull-requests: "write"
+  workflows: "write" # needed ?
 
 jobs:
   vitest:
@@ -20,7 +21,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 ## needed ?
-          token: ${{ secrets.PAT }}
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -103,4 +103,4 @@ jobs:
           gh pr comment $PR_NUMBER --body "This PR has been automatically reverted due to failing E2E tests.
           A new PR has been created to address the issues: $NEW_PR_URL" # tag @$PR_CREATOR on this comment too?
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
+          GITHUB_TOKEN: ${{ github.token }}
