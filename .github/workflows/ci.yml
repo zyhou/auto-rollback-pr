@@ -52,25 +52,19 @@ jobs:
           TRIGGER_COMMIT="${{ github.sha }}"
           echo "Trigger commit: $TRIGGER_COMMIT"
 
-          # Get the PR number associated with the last push to main
-          PR_NUMBER=$(gh api repos/${{ github.repository }}/commits/$TRIGGER_COMMIT/pulls --jq '.[0].number')
-          if [ -z "$PR_NUMBER" ]; then
-            echo "Could not find associated PR number. Exiting."
+          # Get the PR data
+          PR_INFO=$(gh pr list --search "$TRIGGER_COMMIT" --state merged --json number,author --jq '.[0] | {number: .number, author: .author.login}')
+          if [ -z "$PR_INFO" ]; then
+            echo "Could not find associated merged PR for commit $TRIGGER_COMMIT. Exiting."
             exit 1
           fi
 
+          PR_NUMBER=$(echo $PR_INFO | jq -r '.number')
+          PR_CREATOR=$(echo $PR_INFO | jq -r '.author')
           echo "PR number: $PR_NUMBER"
+          echo "PR creator: $PR_CREATOR"
 
-          # Get the original PR creator
-          PR_CREATOR=$(gh pr view $PR_NUMBER --json author -q .author.login)
-
-          # Create a new branch for the fix
-          REVERT_BRANCH="auto-revert-${PR_NUMBER}-$(date +%s)"
-          git checkout -b $REVERT_BRANCH
-          git push origin $REVERT_BRANCH
-
-          # Revert the squashed and merged commit
-          git checkout main
+          # Step 1: Revert on main branch
           if git revert --no-edit $TRIGGER_COMMIT; then
             echo "Successfully reverted PR #$PR_NUMBER"
             git push origin main
@@ -79,7 +73,21 @@ jobs:
             exit 1
           fi
 
-          # Create a new PR
+          # Step 2: Create a new branch
+          REVERT_BRANCH="auto-revert-${PR_NUMBER}-$(date +%s)"
+          git checkout -b $REVERT_BRANCH
+
+          # Step 3: Revert the revert commit
+          REVERT_COMMIT=$(git rev-parse HEAD)
+          if git revert --no-edit $REVERT_COMMIT; then
+            echo "Successfully reverted the revert commit on $REVERT_BRANCH"
+            git push origin $REVERT_BRANCH
+          else
+            echo "Failed to revert the revert commit #$REVERT_COMMIT. Manual intervention may be required."
+            exit 1
+          fi
+
+          # Step 4: Create a PR based on new branch
           NEW_PR_URL=$(gh pr create --base main --head $REVERT_BRANCH \
             --title "Fix: Revert PR #$PR_NUMBER due to failing tests" \
             --body "This PR was created to address the issues in the reverted PR #$PR_NUMBER.
@@ -90,7 +98,7 @@ jobs:
 
           echo "New PR URL: $NEW_PR_URL"
 
-          # Comment on the original PR
+          # Step 5: Comment on the original PR
           gh pr comment $PR_NUMBER --body "This PR has been automatically reverted due to failing E2E tests.
           A new PR has been created to address the issues: $NEW_PR_URL" # tag @$PR_CREATOR on this comment too?
         env:
