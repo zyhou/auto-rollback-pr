@@ -19,7 +19,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 ## needed ?
           token: ${{ secrets.PAT }}
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -55,7 +54,7 @@ jobs:
 
           # Get the PR data
           PR_INFO=$(gh pr list --search "$TRIGGER_COMMIT" --state merged --json number,author --jq '.[0] | {number: .number, author: .author.login}')
-          if [ -z "$PR_INFO" ]; then
+          if [ -z "$PR_INFO" ] || [ "$(echo $PR_INFO | jq 'if .number == null or .author == null then true else false end')" = "true" ]; then
             echo "Could not find associated merged PR for commit $TRIGGER_COMMIT. Exiting."
             exit 1
           fi
@@ -64,6 +63,11 @@ jobs:
           PR_CREATOR=$(echo $PR_INFO | jq -r '.author')
           echo "PR number: $PR_NUMBER"
           echo "PR creator: $PR_CREATOR"
+          if [ -z "$PR_NUMBER" ] || [ -z "$PR_CREATOR" ] || [ "$PR_NUMBER" = "null" ] || [ "$PR_CREATOR" = "null" ]; then
+            echo "Invalid PR number or creator for commit $TRIGGER_COMMIT. Exiting."
+            exit 1
+          fi
+
 
           # Step 1: Revert on main branch
           if git revert --no-edit $TRIGGER_COMMIT; then
