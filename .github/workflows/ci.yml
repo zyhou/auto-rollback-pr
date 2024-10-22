@@ -22,6 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 2 # Fetch the latest commit and its parent
           token: ${{ secrets.PAT }}
       - name: Install pnpm
         uses: pnpm/action-setup@v4
