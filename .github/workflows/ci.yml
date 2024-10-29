@@ -56,44 +56,97 @@ jobs:
           TRIGGER_COMMIT="${{ github.sha }}"
           echo "Trigger commit: $TRIGGER_COMMIT"
 
+          # Get the GitHub Actions run URL
+          ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "Action URL: $ACTION_URL"
+
           # Get the PR data
-          PR_INFO=$(gh pr list --search "$TRIGGER_COMMIT" --state merged --json number,author --jq '.[0] | {number: .number, author: .author.login}')
-          if [ -z "$PR_INFO" ] || [ "$(echo $PR_INFO | jq 'if .number == null or .author == null then true else false end')" = "true" ]; then
+          PR_INFO=$(gh pr list --search "$TRIGGER_COMMIT" --state merged --json number,author,headRefName --jq '.[0] | {
+            number: .number,
+            author: .author.login,
+            branch: .headRefName
+          }')
+
+          if [ -z "$PR_INFO" ] || [ "$(echo $PR_INFO | jq 'if .number == null or .author == null or .branch == null then true else false end')" = "true" ]; then
             echo "Could not find associated merged PR for commit $TRIGGER_COMMIT. Exiting."
+
+            curl -X POST -H 'Content-type: application/json' \
+              --data '{
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "❌ *Auto-Revert Failed*\n• Could not find PR information for commit `'"$TRIGGER_COMMIT"'`\n• Manual intervention required\n• <'"$ACTION_URL"'|View GitHub Action Run>"
+                    }
+                  }
+                ]
+              }' \
+              ${{ secrets.SLACK_WEBHOOK_URL }}
+
             exit 1
           fi
 
           PR_NUMBER=$(echo $PR_INFO | jq -r '.number')
           PR_CREATOR=$(echo $PR_INFO | jq -r '.author')
+          ORIGINAL_BRANCH=$(echo $PR_INFO | jq -r '.branch')
+          CLICKUP_TASK_ID=$(echo "$ORIGINAL_BRANCH" | grep -oP 'CU-\w+' || echo "")
+
           echo "PR number: $PR_NUMBER"
           echo "PR creator: $PR_CREATOR"
-          if [ -z "$PR_NUMBER" ] || [ -z "$PR_CREATOR" ] || [ "$PR_NUMBER" = "null" ] || [ "$PR_CREATOR" = "null" ]; then
-            echo "Invalid PR number or creator for commit $TRIGGER_COMMIT. Exiting."
-            exit 1
-          fi
+          echo "Original branch: $ORIGINAL_BRANCH"
+          echo "ClickUp Task ID: $CLICKUP_TASK_ID"
 
           # Step 1: Revert on main branch
-          if git revert --no-edit $TRIGGER_COMMIT; then
-            echo "Successfully reverted PR #$PR_NUMBER"
-            git push origin main
-          else
-            echo "Failed to revert PR #$PR_NUMBER. Manual intervention may be required."
+          if ! git revert --no-edit $TRIGGER_COMMIT; then
+            echo "Failed to revert PR #$PR_NUMBER on main. Manual intervention may be required."
+
+            curl -X POST -H 'Content-type: application/json' \
+              --data '{
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "❌ *Auto-Revert Failed*\n• Failed to revert PR #'"$PR_NUMBER"' on main\n• Branch: `'"$ORIGINAL_BRANCH"'`\n• Author: @'"$PR_CREATOR"'\n• ClickUp: '"$CLICKUP_TASK_ID"'\n• <'"$ACTION_URL"'|View GitHub Action Run>\n\n*Manual intervention required*"
+                    }
+                  }
+                ]
+              }' \
+              ${{ secrets.SLACK_WEBHOOK_URL }}
+
             exit 1
           fi
 
+          git push origin main
+
           # Step 2: Create a new branch
-          REVERT_BRANCH="auto-revert-${PR_NUMBER}-$(date +%s)"
+          REVERT_BRANCH="auto-revert-${ORIGINAL_BRANCH}-$(date +%s)"
           git checkout -b $REVERT_BRANCH
 
           # Step 3: Revert the revert commit
           REVERT_COMMIT=$(git rev-parse HEAD)
-          if git revert --no-edit $REVERT_COMMIT; then
-            echo "Successfully reverted the revert commit on $REVERT_BRANCH"
-            git push origin $REVERT_BRANCH
-          else
-            echo "Failed to revert the revert commit #$REVERT_COMMIT. Manual intervention may be required."
+          if ! git revert --no-edit $REVERT_COMMIT; then
+            echo "Failed to revert the revert commit on $REVERT_BRANCH. Manual intervention may be required."
+
+            curl -X POST -H 'Content-type: application/json' \
+              --data '{
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "❌ *Auto-Revert Failed*\n• Failed to revert the revert commit on `'"$REVERT_BRANCH"'`\n• Original PR: #'"$PR_NUMBER"'\n• Author: @'"$PR_CREATOR"'\n• ClickUp: '"$CLICKUP_TASK_ID"'\n• <'"$ACTION_URL"'|View GitHub Action Run>\n\n*Manual intervention required*"
+                    }
+                  }
+                ]
+              }' \
+              ${{ secrets.SLACK_WEBHOOK_URL }}
+
             exit 1
           fi
+
+          git push origin $REVERT_BRANCH
 
           # Step 4: Create a PR based on new branch
           NEW_PR_URL=$(gh pr create --base main --head $REVERT_BRANCH \
@@ -101,13 +154,29 @@ jobs:
             --body "This PR was created to address the issues in the reverted PR #$PR_NUMBER.
             Please fix the failing tests and update this PR accordingly.
 
-            Original PR: #$PR_NUMBER" \
+            Original PR: #$PR_NUMBER"
+            @$PR_CREATOR please review and fix the failing tests. \
             --assignee "$PR_CREATOR")
 
           echo "New PR URL: $NEW_PR_URL"
 
           # Step 5: Comment on the original PR
           gh pr comment $PR_NUMBER --body "This PR has been automatically reverted due to failing E2E tests.
-          A new PR has been created to address the issues: $NEW_PR_URL" # tag @$PR_CREATOR on this comment too?
+          A new PR has been created to address the issues: $NEW_PR_URL
+          @$PR_CREATOR please review and fix the failing tests."
+
+          curl -X POST -H 'Content-type: application/json' \
+            --data '{
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "✅ *Auto-Revert Complete*\n• PR #'"$PR_NUMBER"' has been reverted\n• New PR: '"$NEW_PR_URL"'\n• New branch: `'"$REVERT_BRANCH"'`\n• Author: @'"$PR_CREATOR"'\n• ClickUp: '"$CLICKUP_TASK_ID"'\n\nTests are failing on main branch, please check the new PR to fix the issues."
+                  }
+                }
+              ]
+            }' \
+            ${{ secrets.SLACK_WEBHOOK_URL }}
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
